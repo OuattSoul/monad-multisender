@@ -38,26 +38,32 @@
   <script>
     let provider, signer;
 
-async function connect() {
-  if (!window.ethereum) {
-    alert("🚫 MetaMask n’est pas détecté. Veuillez l’installer depuis https://metamask.io pour utiliser cette application.");
-    return;
-  }
-  try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    const account = accounts[0];
-
-    provider = new ethers.providers.Web3Provider(window.ethereum);
-    signer = provider.getSigner();
-    
-    const address = await signer.getAddress();
-    document.getElementById('status').innerText = `✅ Connected: ${address}`;
-  } catch (e) {
-    console.error('Error during MetaMask connection:', e);
-    alert(`🚫 Erreur lors de la connexion à MetaMask: ${e.message || e}`);
-  }
-}
-
+    async function connect() {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          // Etape 1 Demander l'accès aux comptes.
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          const account = accounts[0];
+          
+          // Etape 2 Initialiser provider et signer
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          signer = provider.getSigner();
+          
+          // Etape 3 Afficher le statut de connexion
+          document.getElementById('status').textContent = `✅ Connected: ${account}`;
+          
+          // Optionnel : vérifier le réseau
+        //   const network = await provider.getNetwork();
+        //   console.log('Connected to network:', network);
+          
+        } catch (error) {
+          console.error("Error connecting to MetaMask:", error);
+          document.getElementById('status').textContent = "❌ Error connecting. Please try again.";
+        }
+      } else {
+        document.getElementById('status').textContent = "❌ MetaMask not detected. Please install MetaMask.";
+      }
+    }
 
     function addField(address = '', amount = '') {
       const form = document.getElementById('form');
@@ -76,12 +82,24 @@ async function connect() {
     }
 
     async function sendAll() {
+      // Vérifier que le wallet est connecté
+      if (!provider || !signer) {
+        alert('❌ Please connect your wallet first');
+        return;
+      }
+
       const isERC20 = document.getElementById('tokenType').value === 'erc20';
       const tokenAddr = document.getElementById('tokenAddress').value;
       const addresses = document.getElementsByClassName('addr');
       const amounts = document.getElementsByClassName('amt');
       const log = document.getElementById('log');
       log.innerText = '';
+
+      // Vérification pour les tokens ERC-20
+      if (isERC20 && !tokenAddr) {
+        alert('❌ Please enter ERC-20 token address');
+        return;
+      }
 
       let contract;
       if (isERC20) {
@@ -104,6 +122,7 @@ async function connect() {
           }
           log.innerText += `✅ Sent to ${to}: ${tx.hash}\n`;
           await tx.wait();
+          log.innerText += `✅ Confirmed for ${to}\n`;
         } catch (err) {
           log.innerText += `❌ Error to ${to}: ${err.message}\n`;
         }
@@ -126,6 +145,19 @@ async function connect() {
       }
       reader.readAsText(file);
     });
+
+    // Écouter les changements de compte dans MetaMask
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.on('accountsChanged', function (accounts) {
+        if (accounts.length === 0) {
+          document.getElementById('status').textContent = "❌ Please connect to MetaMask";
+          provider = null;
+          signer = null;
+        } else {
+          connect();
+        }
+      });
+    }
 
     window.onload = () => addField();
   </script>
