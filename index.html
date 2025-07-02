@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Monad Testnet MultiSender</title>
+  <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f3f3f3; padding: 20px; }
+    .container { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
+    .entry { margin-bottom: 10px; }
+    input, select { width: 100%; padding: 8px; margin: 5px 0; }
+    button { padding: 10px 20px; margin-top: 10px; cursor: pointer; }
+    #log { font-size: 0.9em; color: #333; margin-top: 15px; white-space: pre-line; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Monad Testnet MultiSender</h2>
+    <button id="connectButton" onclick="connect()">🔗 Connect Wallet</button>
+    <div id="status"></div>
+
+    <h3>🔢 Choose Token</h3>
+    <select id="tokenType" onchange="toggleTokenInput()">
+      <option value="native">Native MONAD</option>
+      <option value="erc20">ERC-20 Token</option>
+    </select>
+
+    <input type="text" id="tokenAddress" placeholder="ERC-20 Token Address (if selected above)" style="display:none" />
+
+    <form id="form"></form>
+    <button onclick="addField()">➕ Add Address</button>
+    <button onclick="importCSV()">📄 Import CSV</button>
+    <button onclick="sendAll()">🚀 Send to All</button>
+    <input type="file" id="csvInput" style="display:none" accept=".csv" />
+
+    <div id="log"></div>
+  </div>
+
+  <script>
+    let provider, signer;
+
+async function connect() {
+  if (!window.ethereum) {
+    alert("🚫 MetaMask n’est pas détecté. Veuillez l’installer depuis https://metamask.io pour utiliser cette application.");
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const account = accounts[0];
+
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    signer = provider.getSigner();
+    
+    const address = await signer.getAddress();
+    document.getElementById('status').innerText = `✅ Connected: ${address}`;
+  } catch (e) {
+    console.error('Error during MetaMask connection:', e);
+    alert(`🚫 Erreur lors de la connexion à MetaMask: ${e.message || e}`);
+  }
+}
+
+
+    function addField(address = '', amount = '') {
+      const form = document.getElementById('form');
+      const div = document.createElement('div');
+      div.className = "entry";
+      div.innerHTML = `
+        <input type="text" placeholder="Recipient Address" class="addr" value="${address}"/>
+        <input type="text" placeholder="Amount" class="amt" value="${amount}"/>
+      `;
+      form.appendChild(div);
+    }
+
+    function toggleTokenInput() {
+      const tokenInput = document.getElementById('tokenAddress');
+      tokenInput.style.display = document.getElementById('tokenType').value === 'erc20' ? 'block' : 'none';
+    }
+
+    async function sendAll() {
+      const isERC20 = document.getElementById('tokenType').value === 'erc20';
+      const tokenAddr = document.getElementById('tokenAddress').value;
+      const addresses = document.getElementsByClassName('addr');
+      const amounts = document.getElementsByClassName('amt');
+      const log = document.getElementById('log');
+      log.innerText = '';
+
+      let contract;
+      if (isERC20) {
+        const abi = ["function transfer(address to, uint256 amount) returns (bool)"];
+        contract = new ethers.Contract(tokenAddr, abi, signer);
+      }
+
+      for (let i = 0; i < addresses.length; i++) {
+        const to = addresses[i].value.trim();
+        const val = amounts[i].value.trim();
+        if (!to || !val) continue;
+
+        try {
+          let tx;
+          if (isERC20) {
+            const decimals = 18;
+            tx = await contract.transfer(to, ethers.utils.parseUnits(val, decimals));
+          } else {
+            tx = await signer.sendTransaction({ to, value: ethers.utils.parseEther(val) });
+          }
+          log.innerText += `✅ Sent to ${to}: ${tx.hash}\n`;
+          await tx.wait();
+        } catch (err) {
+          log.innerText += `❌ Error to ${to}: ${err.message}\n`;
+        }
+      }
+    }
+
+    function importCSV() {
+      document.getElementById('csvInput').click();
+    }
+
+    document.getElementById('csvInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const lines = event.target.result.split(/\r?\n/);
+        for (let line of lines) {
+          const [addr, amt] = line.split(',');
+          if (addr && amt) addField(addr.trim(), amt.trim());
+        }
+      }
+      reader.readAsText(file);
+    });
+
+    window.onload = () => addField();
+  </script>
+</body>
+</html>
